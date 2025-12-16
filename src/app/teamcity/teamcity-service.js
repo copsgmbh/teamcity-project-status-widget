@@ -89,7 +89,10 @@ export default class TeamcityService {
     return await this._fetchTeamcity(
       teamcityService,
       `buildTypes/${buildTypeId}/branches`,
-      {fields: 'branch(name,internalName,default,unspecified)'}
+      {
+        locator: 'policy:all_branches',
+        fields: 'branch(name,internalName,default,unspecified,active,lastActivity)'
+      }
     );
   }
 
