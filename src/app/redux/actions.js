@@ -15,13 +15,63 @@ function getEffectiveTeamcityToken(state) {
   return isMaskedSecret(token) ? null : token;
 }
 
+function parseKvObjectString(value) {
+  // Parses "{a=b, c=d}" into {a:"b", c:"d"}
+  if (typeof value !== 'string') return null;
+
+  const s = value.trim();
+  if (!s.startsWith('{') || !s.endsWith('}')) return null;
+
+  const inner = s.slice(1, -1).trim();
+  if (!inner) return {};
+
+  const obj = {};
+  inner.split(/,\s*/).forEach(part => {
+    const idx = part.indexOf('=');
+    if (idx <= 0) return;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    obj[key] = val;
+  });
+
+  return obj;
+}
+
 function parseJson(value, fallback) {
   if (typeof value !== 'string') return value == null ? fallback : value;
+
+  // 1) Normal JSON
   try {
     return JSON.parse(value);
   } catch (e) {
-    return fallback;
+    // ignore
   }
+
+  // 2) YouTrack sometimes returns "Map-toString" format, e.g. "{id=..., homeUrl=https://...}"
+  const kv = parseKvObjectString(value);
+  if (kv) {
+    // Special-case TeamCity service format so downstream code can use it immediately
+    if (kv.homeUrl || kv.baseUrl || kv.url) {
+      return {
+        id: kv.id,
+        name: kv.name,
+        homeUrl: kv.homeUrl || kv.baseUrl || kv.url
+      };
+    }
+
+    // Project format: "{id=..., name=..., path=...}"
+    if (kv.id && (kv.name || kv.path)) {
+      return {
+        id: kv.id,
+        name: kv.name,
+        path: kv.path
+      };
+    }
+
+    return kv;
+  }
+
+  return fallback;
 }
 
 function ensureArray(value) {
@@ -268,7 +318,6 @@ export const saveConfiguration = () => async (dispatch, getState, {dashboardApi}
     }
   } = getState();
 
-  // Store complex settings as JSON strings (Apps settings schema limitation)
   const storedTeamcityService = selectedTeamcityService
     ? JSON.stringify({
         id: selectedTeamcityService.id,
@@ -313,15 +362,16 @@ export const saveConfiguration = () => async (dispatch, getState, {dashboardApi}
 
   await dashboardApi.storeConfig({
     title,
+    refreshPeriod,
+    showGreenBuilds,
+    hideChildProjects,
+
     teamcityService: storedTeamcityService,
     project: storedProject,
     buildTypes: storedBuildTypes,
     selectedBranches: storedSelectedBranches,
 
-    teamcityToken: teamcityToken || null,
-    showGreenBuilds,
-    hideChildProjects,
-    refreshPeriod
+    teamcityToken: teamcityToken || null
   });
 
   await dispatch(applyConfiguration());
@@ -348,8 +398,8 @@ export const initWidget = () => async (dispatch, getState, {dashboardApi, regist
   const raw = config || {};
 
   const title = raw.title;
-  const teamcityService = parseJson(raw.teamcityService, raw.teamcityService || null);
-  const project = parseJson(raw.project, raw.project || null);
+  const teamcityService = parseJson(raw.teamcityService, null);
+  const project = parseJson(raw.project, null);
   const buildTypes = ensureArray(parseJson(raw.buildTypes, []));
   const selectedBranches = ensureArray(parseJson(raw.selectedBranches, []));
   const teamcityToken = isMaskedSecret(raw.teamcityToken) ? null : (raw.teamcityToken || null);

@@ -93,8 +93,9 @@ function buildSettingsSchema() {
       project: {type: 'string'},
       buildTypes: {type: 'string'},
 
-      // NEW: TeamCity personal access token (hidden input)
-      teamcityToken: {type: 'string', format: 'secret'}
+        selectedBranches: { "type": "string" },
+
+        teamcityToken: { "type": "string" }
     }
   };
 }

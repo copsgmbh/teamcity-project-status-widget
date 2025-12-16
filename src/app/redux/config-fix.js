@@ -2,7 +2,11 @@ import TeamcityService from '../teamcity/teamcity-service';
 
 function fixConfigProject(config) {
   const {project} = config;
-  if (project && project.path) {
+
+  // If project is a JSON string, do nothing here; parsing happens in actions.js.
+  if (!project || typeof project !== 'object') return false;
+
+  if (project.path) {
     const newProjectPath = project.path.replace(/\b:\b/g, ' :: ');
     if (newProjectPath !== project.path) {
       project.path = newProjectPath;
@@ -14,12 +18,13 @@ function fixConfigProject(config) {
 
 async function fixBuildTypes(config, dashboardApi) {
   const {teamcityService, buildTypes} = config;
-  if (
-    teamcityService &&
-    buildTypes &&
-    buildTypes.length &&
-    buildTypes.some(it => !it.name || !it.path)
-  ) {
+
+  // Only attempt fix if buildTypes is an array of objects
+  if (!teamcityService || !Array.isArray(buildTypes) || buildTypes.length === 0) {
+    return false;
+  }
+
+  if (buildTypes.some(it => !it.name || !it.path)) {
     const service = new TeamcityService(dashboardApi, null);
     config.buildTypes = await service.getBuildTypes(teamcityService, buildTypes);
     config.buildTypes.forEach(it => {
@@ -27,6 +32,7 @@ async function fixBuildTypes(config, dashboardApi) {
     });
     return true;
   }
+
   return false;
 }
 
@@ -40,6 +46,5 @@ export async function fixedConfig(dashboardApi) {
   } catch (e) {
     // Ignore
   }
-
   return config;
 }
