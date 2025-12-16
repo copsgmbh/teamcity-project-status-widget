@@ -394,7 +394,6 @@ export const initWidget = () => async (dispatch, getState, {dashboardApi, regist
   });
 
   const config = await fixedConfig(dashboardApi);
-  console.log('READ CONFIG RAW', config);
   const raw = config || {};
 
   const title = raw.title;
