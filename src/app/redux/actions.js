@@ -144,51 +144,112 @@ export const deselectBranch = createAction('Deselect branch');
 export const updateTeamcityToken = createAction('Update TeamCity token');
 
 // eslint-disable-next-line complexity
+function branchKey(branch) {
+  return (branch && (branch.internalName || branch.name)) || '<default>';
+}
+
+function branchLabel(branch) {
+  return (branch && branch.name) ? branch.name : i18n('Default');
+}
+
+function normalizeBuildType(bt) {
+  if (!bt) return null;
+  // support either {id,name,path} or id-string (defensive)
+  if (typeof bt === 'string') return {id: bt, name: bt, path: bt};
+  return {id: bt.id, name: bt.name, path: bt.path};
+}
+
+function normalizeSelectedPair(pair) {
+  if (!pair) return null;
+  const bt = normalizeBuildType(pair.buildType);
+  if (!bt || !bt.id) return null;
+  return {buildType: bt, branch: pair.branch || null};
+}
+
+function uniquePairs(pairs) {
+  const seen = new Set();
+  const out = [];
+  (pairs || []).forEach(p => {
+    const pp = normalizeSelectedPair(p);
+    if (!pp) return;
+    const key = `${pp.buildType.id}::${branchKey(pp.branch)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(pp);
+  });
+  return out;
+}
+
 export const reloadStatuses = () => async (dispatch, getState, {dashboardApi}) => {
   const state = getState();
-
   const {
     configuration: {isConfiguring},
     teamcityService,
     project,
+    buildTypes,
     hideChildProjects
   } = state;
 
-  // HARDEN: guarantee arrays (prevents "...map is not a function")
-  const buildTypes = ensureArray(state.buildTypes);
-  const selectedBranches = ensureArray(state.selectedBranches);
-
-  if (!isConfiguring && teamcityService && project) {
+  if (!isConfiguring && teamcityService && project && buildTypes) {
     await dispatch(startedStatusLoading());
 
-    const server = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
+    const server = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(state));
 
     try {
+      // IMPORTANT:
+      // - Use root-state selectedBranches (persisted)
+      // - If it’s missing for some reason, fall back to configuration.selectedBranches (defensive)
+      const selectedPairsRaw =
+        (state.selectedBranches && Array.isArray(state.selectedBranches) ? state.selectedBranches : null) ||
+        (state.configuration && Array.isArray(state.configuration.selectedBranches) ? state.configuration.selectedBranches : []);
+
+      const selectedPairs = uniquePairs(selectedPairsRaw);
+
+      // Build a matrix:
+      // For every selected buildType, use selected branches for that buildType;
+      // if none selected for a buildType, include the default branch entry.
+      const buildTypeList = Array.isArray(buildTypes) ? buildTypes : [];
+      const pairsToLoad = [];
+
+      buildTypeList.forEach(bt => {
+        const btId = bt && bt.id;
+        if (!btId) return;
+
+        const matches = selectedPairs.filter(p => p.buildType && p.buildType.id === btId);
+
+        if (matches.length > 0) {
+          pairsToLoad.push(...matches);
+        } else {
+          // default branch for this build type
+          pairsToLoad.push({buildType: normalizeBuildType(bt), branch: null});
+        }
+      });
+
+      // Deduplicate again (in case of duplicates / default overlap)
+      const finalPairs = uniquePairs(pairsToLoad);
+
       let buildStatuses;
 
-      if (selectedBranches.length > 0) {
-        // One entry per (buildType, branch) selection
+      // If the user selected any branches at all, we’ll load by pairs
+      // (which also covers default-branch fallbacks).
+      if (finalPairs.length > 0) {
         const results = await Promise.all(
-          selectedBranches.map(async pair => {
+          finalPairs.map(async pair => {
             const bt = await server.getBuildTypeStatusForBranch(
               teamcityService,
               pair.buildType.id,
               pair.branch
             );
 
-            const branchKey =
-              (pair.branch && (pair.branch.internalName || pair.branch.name)) || '<default>';
-
-            bt.__branchKey = branchKey;
-            bt.__branchLabel = (pair.branch && pair.branch.name) ? pair.branch.name : i18n('Default');
-
+            bt.__branchKey = branchKey(pair.branch);
+            bt.__branchLabel = branchLabel(pair.branch);
             return bt;
           })
         );
 
         buildStatuses = results;
       } else {
-        // Original behavior: default/latest build
+        // Should not happen, but keep the old fallback
         const buildStatusResponse = await server.getBuildStatuses(
           teamcityService,
           project,
@@ -208,6 +269,7 @@ export const reloadStatuses = () => async (dispatch, getState, {dashboardApi}) =
     }
   }
 };
+
 
 export const loadTeamCityServices = () => async (dispatch, getState, {dashboardApi}) => {
   await dispatch(startedTeamcityServicesLoading());
