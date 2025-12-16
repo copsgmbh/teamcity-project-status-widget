@@ -1,12 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta http-equiv="Content-type" content="text/html; charset=utf-8"/>
-  <base target="_parent">
-</head>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8"/>
+    <base target="_parent">
+  </head>
+  <body class="widget-body">
+    <div id="app-container"></div>
 
-<body class="widget-body">
-<div id="app-container"></div>
-</body>
+    <!-- IMPORTANT: register FIRST -->
+    <script type="module">
+      window.__yt_host__ = await YTApp.register();
+    </script>
 
+    <!-- then load your bundle -->
+    <script type="text/javascript" src="main.js"></script>
+  </body>
 </html>

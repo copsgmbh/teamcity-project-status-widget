@@ -15,6 +15,10 @@ const Configuration = (
     serviceSelect,
     projectSelect,
     configurationSelect,
+    branchSelect,
+
+    teamcityToken,
+    onTeamcityTokenChange,
 
     showGreenBuilds,
     onShowGreenBuildsChange,
@@ -31,7 +35,6 @@ const Configuration = (
     onSave={onSave}
     onCancel={onCancel}
     isInvalid={!isConfigurationComplete}
-
     panelControls={[<span key={'refresh'}>{refreshPeriodControl}</span>]}
   >
     {titleInput}
@@ -40,12 +43,30 @@ const Configuration = (
       {serviceSelect}
     </div>
 
+    <div className={styles.container} data-test="teamcity-token">
+      <label className={styles.label}>
+        {i18n('TeamCity token')}
+      </label>
+      <input
+        type="password"
+        value={teamcityToken || ''}
+        onChange={onTeamcityTokenChange}
+        placeholder={i18n('Personal Access Token')}
+        autoComplete="off"
+        className={styles.input}
+      />
+    </div>
+
     <div className={styles.container} data-test="project-select">
       {projectSelect}
     </div>
 
     <div className={styles.container} data-test="configuration-select">
       {configurationSelect}
+    </div>
+
+    <div className={styles.container} data-test="branch-select">
+      {branchSelect}
     </div>
 
     <div
@@ -59,10 +80,7 @@ const Configuration = (
       />
     </div>
 
-    <div
-      className={styles.control}
-      data-test="hide-child-projects"
-    >
+    <div className={styles.control} data-test="hide-child-projects">
       <Checkbox
         label={i18n('Hide child projects')}
         checked={hideChildProjects}
@@ -78,6 +96,10 @@ Configuration.propTypes = {
   serviceSelect: PropTypes.node.isRequired,
   projectSelect: PropTypes.node.isRequired,
   configurationSelect: PropTypes.node.isRequired,
+  branchSelect: PropTypes.node.isRequired,
+
+  teamcityToken: PropTypes.string,
+  onTeamcityTokenChange: PropTypes.func.isRequired,
 
   showGreenBuilds: PropTypes.bool.isRequired,
   onShowGreenBuildsChange: PropTypes.func.isRequired,

@@ -33,8 +33,10 @@ const Content = (
     onConfigure
   }
 ) => {
-  const builds = buildStatuses.
-    filter(buildType => showGreenBuilds || !isSuccessfulBuildType(buildType));
+  const buildStatusesArr = Array.isArray(buildStatuses) ? buildStatuses : [];
+
+  const builds = buildStatusesArr
+    .filter(buildType => showGreenBuilds || !isSuccessfulBuildType(buildType));
 
   if (isInitializing) {
     return (
@@ -69,14 +71,20 @@ const Content = (
   } else {
     return (
       <WidgetContent testKey={'widget-build-list'}>
-        {builds.map(buildType => (
-          <BuildStatus
-            key={buildType.id}
-            buildType={buildType}
-            path={buildPaths[buildType.id] || buildType.name}
-            showGreenBuilds={showGreenBuilds}
-          />
-        ))}
+        {builds.map(buildType => {
+          const branchSuffix = buildType.__branchLabel ? ` (${buildType.__branchLabel})` : '';
+          const keySuffix = buildType.__branchKey ? `::${buildType.__branchKey}` : '';
+          const path = (buildPaths[buildType.id] || buildType.name) + branchSuffix;
+
+          return (
+            <BuildStatus
+              key={`${buildType.id}${keySuffix}`}
+              buildType={buildType}
+              path={path}
+              showGreenBuilds={showGreenBuilds}
+            />
+          );
+        })}
       </WidgetContent>
     );
   }

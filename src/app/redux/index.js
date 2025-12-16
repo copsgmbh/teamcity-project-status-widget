@@ -28,7 +28,17 @@ import {
   updateHideChildProjects,
   updateRefreshPeriod,
   updateShowGreenBuilds,
-  updateTitle
+  updateTitle,
+
+  // Branch selection
+  startedBranchesLoading,
+  finishedBranchesLoading,
+  failedBranchesLoading,
+  selectBranch,
+  deselectBranch,
+
+  // TeamCity token editing in config UI
+  updateTeamcityToken
 } from './actions';
 
 // eslint-disable-next-line no-magic-numbers
@@ -40,11 +50,13 @@ const reduce = createReducer({
     teamcityService,
     project,
     buildTypes,
+    selectedBranches,
     showGreenBuilds,
     hideChildProjects,
     refreshPeriod,
     buildStatuses,
-    buildPaths
+    buildPaths,
+    teamcityToken
   }) => ({
     ...state,
     isInitializing: false,
@@ -52,12 +64,15 @@ const reduce = createReducer({
     teamcityService,
     project,
     buildTypes,
+    selectedBranches: selectedBranches || [],
     showGreenBuilds,
     hideChildProjects,
     refreshPeriod: refreshPeriod || DEFAULT_PERIOD,
     buildStatuses: buildStatuses || [],
-    buildPaths: buildPaths || {}
+    buildPaths: buildPaths || {},
+    teamcityToken: teamcityToken || null
   }),
+
   [openConfiguration]: (state, isInitialConfiguration) => ({
     ...state,
     configuration: {
@@ -71,9 +86,14 @@ const reduce = createReducer({
       showGreenBuilds: state.showGreenBuilds,
       hideChildProjects: state.hideChildProjects,
 
+      // Prefill token + branches into the configuration screen
+      teamcityToken: state.teamcityToken || '',
+      selectedBranches: state.selectedBranches || [],
+
       isInitialConfiguration
     }
   }),
+
   [updateTitle]: (state, title) => ({
     ...state,
     configuration: {
@@ -81,6 +101,7 @@ const reduce = createReducer({
       title
     }
   }),
+
   [startedTeamcityServicesLoading]: state => ({
     ...state,
     configuration: {
@@ -88,6 +109,7 @@ const reduce = createReducer({
       isLoadingServices: true
     }
   }),
+
   [finishedTeamcityServicesLoading]: (state, services) => ({
     ...state,
     configuration: {
@@ -98,6 +120,7 @@ const reduce = createReducer({
       selectedTeamcityService: state.configuration.selectedTeamcityService || services[0]
     }
   }),
+
   [failedTeamcityServicesLoading]: (state, serviceLoadErrorMessage) => ({
     ...state,
     configuration: {
@@ -107,6 +130,7 @@ const reduce = createReducer({
       serviceLoadErrorMessage
     }
   }),
+
   [selectTeamcityService]: (state, selectedService) => ({
     ...state,
     configuration: {
@@ -114,6 +138,7 @@ const reduce = createReducer({
       selectedTeamcityService: selectedService
     }
   }),
+
   [startedProjectsLoading]: state => ({
     ...state,
     configuration: {
@@ -121,6 +146,7 @@ const reduce = createReducer({
       isLoadingProjects: true
     }
   }),
+
   [finishedProjectsLoading]: (state, projects) => ({
     ...state,
     configuration: {
@@ -130,6 +156,7 @@ const reduce = createReducer({
       projectLoadErrorMessage: null
     }
   }),
+
   [failedProjectsLoading]: (state, projectLoadErrorMessage) => ({
     ...state,
     configuration: {
@@ -139,6 +166,7 @@ const reduce = createReducer({
       projectLoadErrorMessage
     }
   }),
+
   [selectProject]: (state, selectedProject) => ({
     ...state,
     configuration: {
@@ -146,9 +174,16 @@ const reduce = createReducer({
       selectedProject,
       projectsAndBuildTypes: [],
       selectedBuildTypes: [],
-      buildTypeLoadErrorMessage: null
+      buildTypeLoadErrorMessage: null,
+
+      // Reset branches when project changes
+      branchesByBuildType: {},
+      selectedBranches: [],
+      isLoadingBranches: false,
+      branchLoadErrorMessage: null
     }
   }),
+
   [startedBuildTypesLoading]: state => ({
     ...state,
     configuration: {
@@ -156,6 +191,7 @@ const reduce = createReducer({
       isLoadingBuildTypes: true
     }
   }),
+
   [finishedBuildTypesLoading]: (state, projectsAndBuildTypes) => ({
     ...state,
     configuration: {
@@ -165,6 +201,7 @@ const reduce = createReducer({
       buildTypeLoadErrorMessage: null
     }
   }),
+
   [failedBuildTypesLoading]: (state, buildTypeLoadErrorMessage) => ({
     ...state,
     configuration: {
@@ -174,6 +211,7 @@ const reduce = createReducer({
       buildTypeLoadErrorMessage
     }
   }),
+
   [selectBuildType]: (state, selectedBuildType) => ({
     ...state,
     configuration: {
@@ -184,6 +222,7 @@ const reduce = createReducer({
       ]
     }
   }),
+
   [deselectBuildType]: (state, unselectedBuildType) => ({
     ...state,
     configuration: {
@@ -195,6 +234,7 @@ const reduce = createReducer({
       )
     }
   }),
+
   [updateShowGreenBuilds]: (state, showGreenBuilds) => ({
     ...state,
     configuration: {
@@ -202,6 +242,7 @@ const reduce = createReducer({
       showGreenBuilds
     }
   }),
+
   [updateHideChildProjects]: (state, hideChildProjects) => ({
     ...state,
     configuration: {
@@ -209,6 +250,7 @@ const reduce = createReducer({
       hideChildProjects
     }
   }),
+
   [updateRefreshPeriod]: (state, refreshPeriod) => ({
     ...state,
     configuration: {
@@ -216,6 +258,15 @@ const reduce = createReducer({
       refreshPeriod
     }
   }),
+
+  [updateTeamcityToken]: (state, teamcityToken) => ({
+    ...state,
+    configuration: {
+      ...state.configuration,
+      teamcityToken
+    }
+  }),
+
   [applyConfiguration]: state => ({
     ...state,
     refreshPeriod: state.configuration.refreshPeriod,
@@ -223,9 +274,15 @@ const reduce = createReducer({
     teamcityService: state.configuration.selectedTeamcityService,
     project: state.configuration.selectedProject,
     buildTypes: state.configuration.selectedBuildTypes,
+
+    // Persist branches + token into runtime/root state
+    selectedBranches: state.configuration.selectedBranches || [],
+    teamcityToken: state.configuration.teamcityToken || null,
+
     showGreenBuilds: state.configuration.showGreenBuilds,
     hideChildProjects: state.configuration.hideChildProjects
   }),
+
   [closeConfiguration]: state => ({
     ...state,
     configuration: {
@@ -233,10 +290,12 @@ const reduce = createReducer({
       isConfiguring: false
     }
   }),
+
   [startedStatusLoading]: state => ({
     ...state,
     isLoadingBuildStatuses: true
   }),
+
   [finishedStatusLoading]: (state, {buildStatuses, buildPaths}) => ({
     ...state,
     buildStatuses,
@@ -244,11 +303,68 @@ const reduce = createReducer({
     isLoadingBuildStatuses: false,
     buildStatusLoadErrorMessage: null
   }),
+
   [failedStatusLoading]: (state, buildStatusLoadErrorMessage) => ({
     ...state,
     buildStatuses: [],
     isLoadingBuildStatuses: false,
     buildStatusLoadErrorMessage
+  }),
+
+/* Branch loading + selection */
+  [startedBranchesLoading]: state => ({
+    ...state,
+    configuration: {
+      ...state.configuration,
+      isLoadingBranches: true
+    }
+  }),
+
+  [finishedBranchesLoading]: (state, branchesByBuildType) => ({
+    ...state,
+    configuration: {
+      ...state.configuration,
+      isLoadingBranches: false,
+      branchesByBuildType,
+      branchLoadErrorMessage: null
+    }
+  }),
+
+  [failedBranchesLoading]: (state, branchLoadErrorMessage) => ({
+    ...state,
+    configuration: {
+      ...state.configuration,
+      isLoadingBranches: false,
+      branchesByBuildType: {},
+      branchLoadErrorMessage
+    }
+  }),
+
+  [selectBranch]: (state, pair) => ({
+    ...state,
+    configuration: {
+      ...state.configuration,
+      selectedBranches: [
+        ...state.configuration.selectedBranches,
+        pair
+      ]
+    }
+  }),
+
+  [deselectBranch]: (state, pair) => ({
+    ...state,
+    configuration: {
+      ...state.configuration,
+      selectedBranches: state.configuration.selectedBranches.filter(it => {
+        const a = it;
+        const b = pair;
+
+        const aKey = `${a.buildType.id}::${(a.branch && (a.branch.internalName || a.branch.name)) || '<default>'}`;
+        const bKey = `${b.buildType.id}::${(b.branch && (b.branch.internalName || b.branch.name)) || '<default>'}`;
+
+        return aKey !== bKey;
+      })
+    }
   })
 }, {
   isInitializing: true,
@@ -256,9 +372,13 @@ const reduce = createReducer({
   teamcityService: {},
   project: null,
   buildTypes: [],
+  selectedBranches: [],
+
   showGreenBuilds: false,
   hideChildProjects: false,
   refreshPeriod: DEFAULT_PERIOD,
+
+  teamcityToken: null,
 
   buildStatuses: [],
   buildPaths: {},
@@ -270,7 +390,6 @@ const reduce = createReducer({
     isInitialConfiguration: false,
 
     title: '',
-
     refreshPeriod: null,
 
     teamcityServices: [],
@@ -288,14 +407,26 @@ const reduce = createReducer({
     selectedBuildTypes: [],
     buildTypeLoadErrorMessage: null,
 
+    branchesByBuildType: {},
+    isLoadingBranches: false,
+    branchLoadErrorMessage: null,
+    selectedBranches: [],
+
     showGreenBuilds: false,
-    hideChildProjects: false
+    hideChildProjects: false,
+
+    teamcityToken: ''
   }
 });
 
 export default (dashboardApi, registerWidgetApi) => {
   const composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
-  return createStore(reduce, composeEnhancers(applyMiddleware(
-    thunkMiddleware.withExtraArgument({dashboardApi, registerWidgetApi})
-  )));
+  return createStore(
+    reduce,
+    composeEnhancers(
+      applyMiddleware(
+        thunkMiddleware.withExtraArgument({dashboardApi, registerWidgetApi})
+      )
+    )
+  );
 };

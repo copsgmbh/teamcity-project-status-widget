@@ -14,12 +14,13 @@ function fixConfigProject(config) {
 
 async function fixBuildTypes(config, dashboardApi) {
   const {teamcityService, buildTypes} = config;
-  if (teamcityService &&
+  if (
+    teamcityService &&
     buildTypes &&
     buildTypes.length &&
     buildTypes.some(it => !it.name || !it.path)
   ) {
-    const service = new TeamcityService(dashboardApi);
+    const service = new TeamcityService(dashboardApi, null);
     config.buildTypes = await service.getBuildTypes(teamcityService, buildTypes);
     config.buildTypes.forEach(it => {
       it.path = it.name;
@@ -32,9 +33,7 @@ async function fixBuildTypes(config, dashboardApi) {
 export async function fixedConfig(dashboardApi) {
   const config = await dashboardApi.readConfig();
   try {
-    const wasFixed = fixConfigProject(config) |
-      await fixBuildTypes(config, dashboardApi);
-
+    const wasFixed = fixConfigProject(config) | (await fixBuildTypes(config, dashboardApi));
     if (wasFixed) {
       await dashboardApi.storeConfig(config);
     }

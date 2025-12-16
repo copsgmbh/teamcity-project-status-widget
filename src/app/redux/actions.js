@@ -6,10 +6,35 @@ import {asFlattenBuildTypeTree, asFlattenProjectTree} from '../teamcity/teamcity
 
 import {fixedConfig} from './config-fix';
 
+function getEffectiveTeamcityToken(state) {
+  const token =
+    (state.configuration && state.configuration.isConfiguring)
+      ? (state.configuration.teamcityToken || null)
+      : (state.teamcityToken || null);
+
+  return isMaskedSecret(token) ? null : token;
+}
+
+function parseJson(value, fallback) {
+  if (typeof value !== 'string') return value == null ? fallback : value;
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function isMaskedSecret(value) {
+  return typeof value === 'string' && /^<\*+>$/.test(value.trim());
+}
+
 export const setInitialSettings = createAction('Set initial settings');
 export const openConfiguration = createAction('Open configuration mode');
 export const updateRefreshPeriod = createAction('Update refresh period');
-
 export const updateTitle = createAction('Update title');
 
 export const startedTeamcityServicesLoading =
@@ -39,11 +64,10 @@ export const failedBuildTypesLoading =
 export const selectBuildType =
   createAction('Add selected build type');
 export const deselectBuildType =
-  createAction('Add selected build type');
+  createAction('Remove selected build type');
 
 export const updateShowGreenBuilds =
   createAction('Toggle show green builds checkbox');
-
 export const updateHideChildProjects =
   createAction('Toggle hide child projects');
 
@@ -57,32 +81,75 @@ export const finishedStatusLoading =
 export const failedStatusLoading =
   createAction('Failed to load project builds statuses');
 
+// Branches
+export const startedBranchesLoading =
+  createAction('Started loading branches');
+export const finishedBranchesLoading =
+  createAction('Finished loading branches');
+export const failedBranchesLoading =
+  createAction('Failed to load branches');
+export const selectBranch = createAction('Select branch');
+export const deselectBranch = createAction('Deselect branch');
+
+export const updateTeamcityToken = createAction('Update TeamCity token');
+
 // eslint-disable-next-line complexity
 export const reloadStatuses = () => async (dispatch, getState, {dashboardApi}) => {
+  const state = getState();
+
   const {
     configuration: {isConfiguring},
     teamcityService,
     project,
-    buildTypes,
     hideChildProjects
-  } = getState();
-  if (!isConfiguring && teamcityService && project && buildTypes) {
+  } = state;
+
+  // HARDEN: guarantee arrays (prevents "...map is not a function")
+  const buildTypes = ensureArray(state.buildTypes);
+  const selectedBranches = ensureArray(state.selectedBranches);
+
+  if (!isConfiguring && teamcityService && project) {
     await dispatch(startedStatusLoading());
 
-    const server = new TeamcityService(dashboardApi);
+    const server = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
+
     try {
-      const buildStatusRequest = server.getBuildStatuses(
-        teamcityService,
-        project,
-        buildTypes,
-        hideChildProjects
-      );
-      const buildPathsRequest = server.getPaths(teamcityService, project);
-      const [buildStatusResponse, buildPaths] = await Promise.all([
-        buildStatusRequest,
-        buildPathsRequest
-      ]);
-      const buildStatuses = buildStatusResponse.buildType;
+      let buildStatuses;
+
+      if (selectedBranches.length > 0) {
+        // One entry per (buildType, branch) selection
+        const results = await Promise.all(
+          selectedBranches.map(async pair => {
+            const bt = await server.getBuildTypeStatusForBranch(
+              teamcityService,
+              pair.buildType.id,
+              pair.branch
+            );
+
+            const branchKey =
+              (pair.branch && (pair.branch.internalName || pair.branch.name)) || '<default>';
+
+            bt.__branchKey = branchKey;
+            bt.__branchLabel = (pair.branch && pair.branch.name) ? pair.branch.name : i18n('Default');
+
+            return bt;
+          })
+        );
+
+        buildStatuses = results;
+      } else {
+        // Original behavior: default/latest build
+        const buildStatusResponse = await server.getBuildStatuses(
+          teamcityService,
+          project,
+          buildTypes,
+          hideChildProjects
+        );
+        buildStatuses = buildStatusResponse.buildType;
+      }
+
+      const buildPaths = await server.getPaths(teamcityService, project);
+
       await dashboardApi.storeCache({buildStatuses, buildPaths});
       await dispatch(finishedStatusLoading({buildStatuses, buildPaths}));
     } catch (e) {
@@ -118,7 +185,7 @@ export const loadProjects = () => async (dispatch, getState, {dashboardApi}) => 
   if (selectedTeamcityService) {
     await dispatch(startedProjectsLoading());
     try {
-      const teamcityService = new TeamcityService(dashboardApi);
+      const teamcityService = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
       const projectsResponse = await teamcityService.getProjects(selectedTeamcityService);
       await dispatch(finishedProjectsLoading(asFlattenProjectTree(projectsResponse)));
     } catch (e) {
@@ -134,7 +201,7 @@ export const loadBuildTypes = () => async (dispatch, getState, {dashboardApi}) =
   if (selectedTeamcityService && selectedProject) {
     await dispatch(startedBuildTypesLoading());
     try {
-      const teamcityService = new TeamcityService(dashboardApi);
+      const teamcityService = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
       const [projectsResponse, buildTypesResponse] = await Promise.all([
         teamcityService.getSubProjects(selectedTeamcityService, selectedProject),
         teamcityService.getBuildTypesOfProject(selectedTeamcityService, selectedProject)
@@ -153,6 +220,33 @@ export const loadBuildTypes = () => async (dispatch, getState, {dashboardApi}) =
   }
 };
 
+export const loadBranches = () => async (dispatch, getState, {dashboardApi}) => {
+  const {configuration: {selectedTeamcityService, selectedBuildTypes}} = getState();
+  if (!selectedTeamcityService || !selectedBuildTypes || selectedBuildTypes.length === 0) {
+    return;
+  }
+
+  await dispatch(startedBranchesLoading());
+  try {
+    const teamcityService = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
+
+    const responses = await Promise.all(
+      selectedBuildTypes.map(bt => teamcityService.getBranches(selectedTeamcityService, bt.id))
+    );
+
+    const branchesByBuildType = {};
+    selectedBuildTypes.forEach((bt, idx) => {
+      branchesByBuildType[bt.id] = (responses[idx] && responses[idx].branch) ? responses[idx].branch : [];
+    });
+
+    await dispatch(finishedBranchesLoading(branchesByBuildType));
+  } catch (e) {
+    const error = (e.data && e.data.message) || e.message || e.toString();
+    const message = i18n('Cannot load list of TeamCity branches: {{ error }}', {error});
+    await dispatch(failedBranchesLoading(message));
+  }
+};
+
 export const startConfiguration = isInitialConfiguration =>
   async dispatch => {
     await dispatch(openConfiguration(isInitialConfiguration));
@@ -168,26 +262,68 @@ export const saveConfiguration = () => async (dispatch, getState, {dashboardApi}
       selectedBuildTypes,
       showGreenBuilds,
       hideChildProjects,
-      refreshPeriod
+      refreshPeriod,
+      selectedBranches,
+      teamcityToken
     }
   } = getState();
-  await dashboardApi.storeConfig({
-    title,
-    teamcityService: selectedTeamcityService,
-    project: selectedProject && {
-      id: selectedProject.id,
-      name: selectedProject.name,
-      path: selectedProject.path
-    },
-    buildTypes: selectedBuildTypes && selectedBuildTypes.map(it => ({
+
+  // Store complex settings as JSON strings (Apps settings schema limitation)
+  const storedTeamcityService = selectedTeamcityService
+    ? JSON.stringify({
+        id: selectedTeamcityService.id,
+        name: selectedTeamcityService.name,
+        homeUrl: selectedTeamcityService.homeUrl
+      })
+    : null;
+
+  const storedProject = selectedProject
+    ? JSON.stringify({
+        id: selectedProject.id,
+        name: selectedProject.name,
+        path: selectedProject.path
+      })
+    : null;
+
+  const storedBuildTypes = JSON.stringify(
+    (selectedBuildTypes || []).map(it => ({
       id: it.id,
       name: it.name,
       path: it.path
-    })),
+    }))
+  );
+
+  const storedSelectedBranches = JSON.stringify(
+    (selectedBranches || []).map(pair => ({
+      buildType: {
+        id: pair.buildType.id,
+        name: pair.buildType.name,
+        path: pair.buildType.path
+      },
+      branch: pair.branch
+        ? {
+            name: pair.branch.name,
+            internalName: pair.branch.internalName,
+            default: pair.branch.default,
+            unspecified: pair.branch.unspecified
+          }
+        : null
+    }))
+  );
+
+  await dashboardApi.storeConfig({
+    title,
+    teamcityService: storedTeamcityService,
+    project: storedProject,
+    buildTypes: storedBuildTypes,
+    selectedBranches: storedSelectedBranches,
+
+    teamcityToken: teamcityToken || null,
     showGreenBuilds,
     hideChildProjects,
     refreshPeriod
   });
+
   await dispatch(applyConfiguration());
   await dispatch(closeConfiguration());
   await dispatch(reloadStatuses());
@@ -206,28 +342,40 @@ export const initWidget = () => async (dispatch, getState, {dashboardApi, regist
     onConfigure: () => dispatch(startConfiguration(false)),
     onRefresh: () => dispatch(reloadStatuses())
   });
+
   const config = await fixedConfig(dashboardApi);
-  const {
-    title,
-    teamcityService,
-    project,
-    buildTypes,
-    showGreenBuilds,
-    hideChildProjects,
-    refreshPeriod
-  } = config || {};
-  const {result: {buildStatuses, buildPaths}} = ((await dashboardApi.readCache())) || {result: {}};
+  console.log('READ CONFIG RAW', config);
+  const raw = config || {};
+
+  const title = raw.title;
+  const teamcityService = parseJson(raw.teamcityService, raw.teamcityService || null);
+  const project = parseJson(raw.project, raw.project || null);
+  const buildTypes = ensureArray(parseJson(raw.buildTypes, []));
+  const selectedBranches = ensureArray(parseJson(raw.selectedBranches, []));
+  const teamcityToken = isMaskedSecret(raw.teamcityToken) ? null : (raw.teamcityToken || null);
+
+  const showGreenBuilds = raw.showGreenBuilds;
+  const hideChildProjects = raw.hideChildProjects;
+  const refreshPeriod = raw.refreshPeriod;
+
+  const cache = (await dashboardApi.readCache()) || {result: {}};
+  const cachedStatuses = ensureArray(cache.result && cache.result.buildStatuses);
+  const cachedPaths = (cache.result && cache.result.buildPaths) || {};
+
   await dispatch(setInitialSettings({
     title,
     teamcityService,
     project,
-    buildTypes: buildTypes || [],
+    buildTypes,
+    selectedBranches,
     showGreenBuilds: showGreenBuilds || false,
     hideChildProjects: hideChildProjects || false,
     refreshPeriod,
-    buildStatuses,
-    buildPaths
+    buildStatuses: cachedStatuses,
+    buildPaths: cachedPaths,
+    teamcityToken
   }));
+
   await dispatch(reloadStatuses());
   if (!config) {
     await dispatch(startConfiguration(true));
