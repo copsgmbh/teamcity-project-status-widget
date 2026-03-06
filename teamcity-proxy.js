@@ -72,7 +72,6 @@ exports.httpHandler = {
 
         // Optional
         const query = body.query || null;
-        const auth = body.auth || null; // "Bearer xxx" OR "Basic yyy" OR raw token (we'll treat as Bearer)
 
         if (!baseUrl) {
           ctx.response.code = 400;
@@ -92,14 +91,10 @@ exports.httpHandler = {
           connection.addHeader('Accept', 'application/json');
           connection.addHeader('Content-Type', 'application/json');
 
-          if (auth) {
-            const authValue = String(auth);
-            const headerValue =
-              authValue.startsWith('Bearer ') || authValue.startsWith('Basic ')
-                ? authValue
-                : `Bearer ${authValue}`;
-
-            connection.addHeader('Authorization', headerValue);
+          // Use the app-level secret setting for authentication
+          const token = ctx.settings.teamcityToken;
+          if (token) {
+            connection.bearerAuth(token);
           }
 
           const resp = connection.getSync(tcPath);

@@ -1,9 +1,6 @@
-const API_VER = 'latest';
-
 export default class TeamcityService {
-  constructor(dashboardApi, teamcityToken) {
+  constructor(dashboardApi) {
     this.dashboardApi = dashboardApi;
-    this.teamcityToken = teamcityToken || null;
   }
 
   async getProjects(teamcityService) {
@@ -117,30 +114,20 @@ export default class TeamcityService {
   }
 
   async _fetchTeamcity(teamcityService, path, query) {
-    const host = window.__yt_host__ || this.dashboardApi;
+    const host = this.dashboardApi;
     if (!host || typeof host.fetchApp !== 'function') {
-      throw new Error('Host API missing fetchApp(). Ensure YTApp.register() ran and window.__yt_host__ is set.');
+      throw new Error('Host API missing fetchApp().');
     }
 
     const baseUrl =
       (teamcityService && (teamcityService.homeUrl || teamcityService.baseUrl || teamcityService.url)) || '';
-
-    const token = this.teamcityToken;
-
-    const isMaskedSecret = value =>
-      typeof value === 'string' && /^<\*+>$/.test(value.trim());
-
-    // If the token is masked (e.g. "<***>") after reload, DO NOT forward it.
-    // The proxy will use ctx.settings.teamcityToken instead.
-    const auth = token && !isMaskedSecret(token) ? token : null;
 
     return await host.fetchApp('teamcity-proxy/request', {
       method: 'POST',
       body: {
         baseUrl,
         apiPath: path,
-        query,
-        auth
+        query
       }
     });
   }

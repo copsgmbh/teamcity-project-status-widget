@@ -6,15 +6,6 @@ import {asFlattenBuildTypeTree, asFlattenProjectTree} from '../teamcity/teamcity
 
 import {fixedConfig} from './config-fix';
 
-function getEffectiveTeamcityToken(state) {
-  const token =
-    (state.configuration && state.configuration.isConfiguring)
-      ? (state.configuration.teamcityToken || null)
-      : (state.teamcityToken || null);
-
-  return isMaskedSecret(token) ? null : token;
-}
-
 function parseKvObjectString(value) {
   // Parses "{a=b, c=d}" into {a:"b", c:"d"}
   if (typeof value !== 'string') return null;
@@ -78,10 +69,6 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function isMaskedSecret(value) {
-  return typeof value === 'string' && /^<\*+>$/.test(value.trim());
-}
-
 export const setInitialSettings = createAction('Set initial settings');
 export const openConfiguration = createAction('Open configuration mode');
 export const updateRefreshPeriod = createAction('Update refresh period');
@@ -141,8 +128,6 @@ export const failedBranchesLoading =
 export const selectBranch = createAction('Select branch');
 export const deselectBranch = createAction('Deselect branch');
 
-export const updateTeamcityToken = createAction('Update TeamCity token');
-
 // eslint-disable-next-line complexity
 function branchKey(branch) {
   return (branch && (branch.internalName || branch.name)) || '<default>';
@@ -193,7 +178,7 @@ export const reloadStatuses = () => async (dispatch, getState, {dashboardApi}) =
   if (!isConfiguring && teamcityService && project && buildTypes) {
     await dispatch(startedStatusLoading());
 
-    const server = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(state));
+    const server = new TeamcityService(dashboardApi);
 
     try {
       // IMPORTANT:
@@ -297,7 +282,7 @@ export const loadProjects = () => async (dispatch, getState, {dashboardApi}) => 
   if (selectedTeamcityService) {
     await dispatch(startedProjectsLoading());
     try {
-      const teamcityService = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
+      const teamcityService = new TeamcityService(dashboardApi);
       const projectsResponse = await teamcityService.getProjects(selectedTeamcityService);
       await dispatch(finishedProjectsLoading(asFlattenProjectTree(projectsResponse)));
     } catch (e) {
@@ -313,7 +298,7 @@ export const loadBuildTypes = () => async (dispatch, getState, {dashboardApi}) =
   if (selectedTeamcityService && selectedProject) {
     await dispatch(startedBuildTypesLoading());
     try {
-      const teamcityService = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
+      const teamcityService = new TeamcityService(dashboardApi);
       const [projectsResponse, buildTypesResponse] = await Promise.all([
         teamcityService.getSubProjects(selectedTeamcityService, selectedProject),
         teamcityService.getBuildTypesOfProject(selectedTeamcityService, selectedProject)
@@ -340,7 +325,7 @@ export const loadBranches = () => async (dispatch, getState, {dashboardApi}) => 
 
   await dispatch(startedBranchesLoading());
   try {
-    const teamcityService = new TeamcityService(dashboardApi, getEffectiveTeamcityToken(getState()));
+    const teamcityService = new TeamcityService(dashboardApi);
 
     const responses = await Promise.all(
       selectedBuildTypes.map(bt => teamcityService.getBranches(selectedTeamcityService, bt.id))
@@ -375,8 +360,7 @@ export const saveConfiguration = () => async (dispatch, getState, {dashboardApi}
       showGreenBuilds,
       hideChildProjects,
       refreshPeriod,
-      selectedBranches,
-      teamcityToken
+      selectedBranches
     }
   } = getState();
 
@@ -431,9 +415,7 @@ export const saveConfiguration = () => async (dispatch, getState, {dashboardApi}
     teamcityService: storedTeamcityService,
     project: storedProject,
     buildTypes: storedBuildTypes,
-    selectedBranches: storedSelectedBranches,
-
-    teamcityToken: teamcityToken || null
+    selectedBranches: storedSelectedBranches
   });
 
   await dispatch(applyConfiguration());
@@ -449,12 +431,7 @@ export const cancelConfiguration = () => async (dispatch, getState, {dashboardAp
   }
 };
 
-export const initWidget = () => async (dispatch, getState, {dashboardApi, registerWidgetApi}) => {
-  registerWidgetApi({
-    onConfigure: () => dispatch(startConfiguration(false)),
-    onRefresh: () => dispatch(reloadStatuses())
-  });
-
+export const initWidget = () => async (dispatch, getState, {dashboardApi}) => {
   const config = await fixedConfig(dashboardApi);
   const raw = config || {};
 
@@ -463,7 +440,6 @@ export const initWidget = () => async (dispatch, getState, {dashboardApi, regist
   const project = parseJson(raw.project, null);
   const buildTypes = ensureArray(parseJson(raw.buildTypes, []));
   const selectedBranches = ensureArray(parseJson(raw.selectedBranches, []));
-  const teamcityToken = isMaskedSecret(raw.teamcityToken) ? null : (raw.teamcityToken || null);
 
   const showGreenBuilds = raw.showGreenBuilds;
   const hideChildProjects = raw.hideChildProjects;
@@ -483,8 +459,7 @@ export const initWidget = () => async (dispatch, getState, {dashboardApi, regist
     hideChildProjects: hideChildProjects || false,
     refreshPeriod,
     buildStatuses: cachedStatuses,
-    buildPaths: cachedPaths,
-    teamcityToken
+    buildPaths: cachedPaths
   }));
 
   await dispatch(reloadStatuses());

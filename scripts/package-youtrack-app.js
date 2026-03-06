@@ -62,14 +62,7 @@ function buildWidgetIndexHtml(entryScriptName) {
     '  </head>',
     '  <body class="widget-body">',
     '    <div id="app-container"></div>',
-    '',
-    '    <script type="module">',
-    '      window.__yt_host__ = await YTApp.register();',
-    '      const s = document.createElement("script");',
-    `      s.src = "./${entryScriptName}";`,
-    '      s.defer = true;',
-    '      document.body.appendChild(s);',
-    '    </script>',
+    `    <script src="./${entryScriptName}"></script>`,
     '  </body>',
     '</html>',
     ''
@@ -93,9 +86,7 @@ function buildSettingsSchema() {
       project: {type: 'string'},
       buildTypes: {type: 'string'},
 
-        selectedBranches: { "type": "string" },
-
-        teamcityToken: { "type": "string" }
+        selectedBranches: { "type": "string" }
     }
   };
 }
@@ -108,6 +99,7 @@ function buildAppManifest(version) {
     title: APP_TITLE,
     description: 'Dashboard widget that shows the status of selected TeamCity build configurations.',
     version,
+    icon: 'teamcity.svg',
     vendor: {
       name: 'Local Development',
       url: 'https://example.invalid',
@@ -189,6 +181,22 @@ async function main() {
   }
 
   await copyFile(proxySrc, proxyDst);
+
+  // Copy app-level settings schema (defines app settings like TeamCity API token)
+  const settingsSrc = path.join(ROOT, 'settings.json');
+  const settingsDst = path.join(OUT_DIR, 'settings.json');
+
+  if (!(await exists(settingsSrc))) {
+    throw new Error(`Missing ${settingsSrc}. Create settings.json at repo root.`);
+  }
+
+  await copyFile(settingsSrc, settingsDst);
+
+  // Copy app icon
+  const iconSrc = path.join(ROOT, 'teamcity.svg');
+  if (await exists(iconSrc)) {
+    await copyFile(iconSrc, path.join(OUT_DIR, 'teamcity.svg'));
+  }
 
   // Write widget settings schema + widget index.html (overwrite any dist/index.html)
   await fsp.writeFile(

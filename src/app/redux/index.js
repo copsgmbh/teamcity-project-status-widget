@@ -37,8 +37,6 @@ import {
   selectBranch,
   deselectBranch,
 
-  // TeamCity token editing in config UI
-  updateTeamcityToken
 } from './actions';
 
 // eslint-disable-next-line no-magic-numbers
@@ -55,8 +53,7 @@ const reduce = createReducer({
     hideChildProjects,
     refreshPeriod,
     buildStatuses,
-    buildPaths,
-    teamcityToken
+    buildPaths
   }) => ({
     ...state,
     isInitializing: false,
@@ -69,8 +66,7 @@ const reduce = createReducer({
     hideChildProjects,
     refreshPeriod: refreshPeriod || DEFAULT_PERIOD,
     buildStatuses: buildStatuses || [],
-    buildPaths: buildPaths || {},
-    teamcityToken: teamcityToken || null
+    buildPaths: buildPaths || {}
   }),
 
   [openConfiguration]: (state, isInitialConfiguration) => ({
@@ -86,8 +82,6 @@ const reduce = createReducer({
       showGreenBuilds: state.showGreenBuilds,
       hideChildProjects: state.hideChildProjects,
 
-      // Prefill token + branches into the configuration screen
-      teamcityToken: state.teamcityToken || '',
       selectedBranches: state.selectedBranches || [],
 
       isInitialConfiguration
@@ -259,14 +253,6 @@ const reduce = createReducer({
     }
   }),
 
-  [updateTeamcityToken]: (state, teamcityToken) => ({
-    ...state,
-    configuration: {
-      ...state.configuration,
-      teamcityToken
-    }
-  }),
-
   [applyConfiguration]: state => ({
     ...state,
     refreshPeriod: state.configuration.refreshPeriod,
@@ -275,9 +261,7 @@ const reduce = createReducer({
     project: state.configuration.selectedProject,
     buildTypes: state.configuration.selectedBuildTypes,
 
-    // Persist branches + token into runtime/root state
     selectedBranches: state.configuration.selectedBranches || [],
-    teamcityToken: state.configuration.teamcityToken || null,
 
     showGreenBuilds: state.configuration.showGreenBuilds,
     hideChildProjects: state.configuration.hideChildProjects
@@ -378,8 +362,6 @@ const reduce = createReducer({
   hideChildProjects: false,
   refreshPeriod: DEFAULT_PERIOD,
 
-  teamcityToken: null,
-
   buildStatuses: [],
   buildPaths: {},
   isLoadingBuildStatuses: false,
@@ -413,9 +395,7 @@ const reduce = createReducer({
     selectedBranches: [],
 
     showGreenBuilds: false,
-    hideChildProjects: false,
-
-    teamcityToken: ''
+    hideChildProjects: false
   }
 });
 

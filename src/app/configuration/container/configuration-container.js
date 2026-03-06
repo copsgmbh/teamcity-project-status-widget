@@ -6,8 +6,7 @@ import {
   cancelConfiguration,
   saveConfiguration,
   updateHideChildProjects,
-  updateShowGreenBuilds,
-  updateTeamcityToken
+  updateShowGreenBuilds
 } from '../../redux/actions';
 
 import TitleInputContainer from './title-input-container';
@@ -23,9 +22,6 @@ const ConfigurationContainer = connect(
     titleInput: <TitleInputContainer/>,
     serviceSelect: <ServiceSelectContainer/>,
 
-    // NEW: token input props for Configuration.js
-    teamcityToken: state.configuration.teamcityToken || '',
-
     projectSelect: <ProjectSelectContainer/>,
     configurationSelect: <BuildTypeSelectContainer/>,
     branchSelect: <BranchSelectContainer/>,
@@ -38,8 +34,6 @@ const ConfigurationContainer = connect(
     )
   }),
   dispatch => ({
-    onTeamcityTokenChange: event => dispatch(updateTeamcityToken(event.target.value)),
-
     onShowGreenBuildsChange: event => dispatch(updateShowGreenBuilds(event.target.checked)),
     onHideChildProjectsChange: event => dispatch(updateHideChildProjects(event.target.checked)),
 

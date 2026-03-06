@@ -17,9 +17,6 @@ const Configuration = (
     configurationSelect,
     branchSelect,
 
-    teamcityToken,
-    onTeamcityTokenChange,
-
     showGreenBuilds,
     onShowGreenBuildsChange,
 
@@ -41,20 +38,6 @@ const Configuration = (
 
     <div className={styles.container} data-test="service-select">
       {serviceSelect}
-    </div>
-
-    <div className={styles.container} data-test="teamcity-token">
-      <label className={styles.label}>
-        {i18n('TeamCity token')}
-      </label>
-      <input
-        type="password"
-        value={teamcityToken || ''}
-        onChange={onTeamcityTokenChange}
-        placeholder={i18n('Personal Access Token')}
-        autoComplete="off"
-        className={styles.input}
-      />
     </div>
 
     <div className={styles.container} data-test="project-select">
@@ -97,9 +80,6 @@ Configuration.propTypes = {
   projectSelect: PropTypes.node.isRequired,
   configurationSelect: PropTypes.node.isRequired,
   branchSelect: PropTypes.node.isRequired,
-
-  teamcityToken: PropTypes.string,
-  onTeamcityTokenChange: PropTypes.func.isRequired,
 
   showGreenBuilds: PropTypes.bool.isRequired,
   onShowGreenBuildsChange: PropTypes.func.isRequired,
